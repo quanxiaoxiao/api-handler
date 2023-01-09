@@ -112,6 +112,7 @@ test('handler', async (t) => {
   const ctx = {
     method: 'GET',
     path: '/get',
+    'content-type': 'application/json',
     set: (name, value) => {
       ctx[name] = value;
     },
@@ -207,6 +208,7 @@ test('api nest', async (t) => {
   const ctx = {
     method: 'GET',
     path: '/1/cqq',
+    'content-type': 'application/json',
     set: (name, value) => {
       ctx[name] = value;
     },
@@ -300,6 +302,7 @@ test('validate', async (t) => {
   const ctx = {
     method: 'GET',
     path: '/cqq',
+    'content-type': 'application/json',
     set: (name, value) => {
       ctx[name] = value;
     },
@@ -362,6 +365,7 @@ test('default value', async (t) => {
   });
   const ctx = {
     method: 'POST',
+    'content-type': 'application/json',
     path: '/cqq',
     set: (name, value) => {
       ctx[name] = value;

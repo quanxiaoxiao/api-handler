@@ -135,7 +135,7 @@ const handler = (apis) => {
       ctx.throw(400, JSON.stringify(apiItem.type.errors));
     }
     ctx.matches = apiItem.regexp.exec(path);
-    if (method === 'PUT' || method === 'POST') {
+    if (/application\/json/.test(ctx.get('content-type')) && (method === 'PUT' || method === 'POST')) {
       try {
         const buf = await receiveData(ctx.req);
         let contentData = JSON.parse(buf);
