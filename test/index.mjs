@@ -35,7 +35,7 @@ test('parse api', (t) => {
     }),
   };
 
-  t.deepEqual(parse(apis).length, 6);
+  t.is(parse(apis).length, 6);
   apis = {
     '/get': {
       get: () => ({
@@ -221,4 +221,54 @@ test('api nest', async (t) => {
   await t.throwsAsync(async () => {
     await handler(ctx);
   });
+});
+
+test('validate', async (t) => {
+  const handler = api({
+    '/cqq': {
+      get: {
+        validate: {
+          type: 'object',
+          properties: {
+            name: {
+              type: 'string',
+              nullable: false,
+            },
+            age: {
+              type: 'integer',
+              nullable: false,
+            },
+            additionalProperties: true,
+          },
+          required: ['name', 'age'],
+        },
+        convert: {
+          name: 'string',
+          age: 'integer',
+        },
+        fn: (ctx) => ({ name: 'cqq', age: ctx.query.age }),
+      },
+    },
+  });
+  const ctx = {
+    method: 'GET',
+    path: '/cqq',
+    set: (name, value) => {
+      ctx[name] = value;
+    },
+    get: (name) => ctx[name],
+    throw: (statusCode) => {
+      throw createError(statusCode == null ? 500 : statusCode);
+    },
+  };
+  await t.throwsAsync(async () => {
+    await handler(ctx);
+  });
+  ctx.query = {
+    name: 'cqq',
+    age: '22',
+  };
+  await handler(ctx);
+  t.is(ctx.body.name, 'cqq');
+  t.is(ctx.body.age, 22);
 });

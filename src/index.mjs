@@ -1,5 +1,7 @@
 import _ from 'lodash';
+import Ajv from 'ajv';
 import { pathToRegexp } from 'path-to-regexp';
+import convertData from '@quanxiaoxiao/data-convert';
 
 const METHODS = ['GET', 'POST', 'DELETE', 'PUT'];
 
@@ -22,21 +24,26 @@ export const parse = (apis) => {
       console.warn(`\`${pathname}\` handler invalid`);
       continue;
     }
+    const defaultOptions = {
+      pathname,
+      validate: null,
+      defaultQuery: null,
+      convert: null,
+      regexp: pathToRegexp(pathname),
+    };
     if (type === 'function') {
       METHODS.forEach((method) => {
         result.push({
+          ...defaultOptions,
           _id: `${pathname}@${method}`,
-          pathname,
           method,
-          regexp: pathToRegexp(pathname),
           fn: obj,
         });
       });
       result.push({
+        ...defaultOptions,
         _id: `${pathname}@OPTIONS`,
-        pathname,
         method: 'OPTIONS',
-        regexp: pathToRegexp(pathname),
         fn: obj,
       });
     } else {
@@ -44,21 +51,32 @@ export const parse = (apis) => {
       for (let j = 0; j < methodList.length; j++) {
         const method = methodList[j].toUpperCase();
         if (!METHODS.includes(method)) {
-          console.warn(`\`${pathname}\` method \`${method}\` invalid`);
+          console.warn(`\`${pathname}\` method \`${methodList[j]}\` invalid`);
           continue;
         }
         const fn = obj[methodList[j]];
-        if (typeof fn !== 'function') {
-          console.warn(`\`${pathname}\` \`${method}\` handler is not function`);
+        if (fn == null || (typeof fn !== 'function' && typeof fn.fn !== 'function')) {
+          console.warn(`\`${pathname}\` \`${methodList[j]}\` handler is not function`);
           continue;
         }
-        result.push({
-          _id: `${pathname}@${method}`,
-          pathname,
-          regexp: pathToRegexp(pathname),
-          method,
-          fn,
-        });
+        if (fn.fn) {
+          result.push({
+            ...defaultOptions,
+            _id: `${pathname}@${method}`,
+            method,
+            fn: fn.fn,
+            validate: fn.validate ? new Ajv().compile(fn.validate) : null,
+            convert: fn.convert ? convertData(fn.convert) : null,
+            defaultQuery: fn.defaultQuery || null,
+          });
+        } else {
+          result.push({
+            ...defaultOptions,
+            _id: `${pathname}@${method}`,
+            method,
+            fn,
+          });
+        }
       }
     }
   }
@@ -92,6 +110,12 @@ const handler = (apis) => {
     const apiItem = apiMatchList.find((d) => method === d.method);
     if (!apiItem) {
       ctx.throw(405);
+    }
+    if (apiItem.convert) {
+      ctx.query = apiItem.convert(ctx.query);
+    }
+    if (apiItem.validate && !apiItem.validate(ctx.query)) {
+      ctx.throw(400, JSON.stringify(apiItem.validate.errors));
     }
     ctx.matches = apiItem.regexp.exec(path);
     const ret = await apiItem.fn(ctx);
