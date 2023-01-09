@@ -1,6 +1,14 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from "node:url";
 import createError from 'http-errors';
 import test from 'ava'; // eslint-disable-line
 import api, { parse } from '../src/index.mjs';
+
+const createReadStream = (name) => {
+  const rs = fs.createReadStream(path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'data', name)); // eslint-disable-line
+  return rs;
+};
 
 test('parse api', (t) => {
   t.throws(() => {
@@ -97,6 +105,9 @@ test('handler', async (t) => {
     '/1/(.*)': {
       get: (ctx) => ctx.matches[1],
     },
+    '/post/1': {
+      post: (ctx) => ctx.contentData,
+    },
   });
   const ctx = {
     method: 'GET',
@@ -112,6 +123,7 @@ test('handler', async (t) => {
   await handler(ctx);
   t.deepEqual(ctx.body, { name: 'get' });
   await t.throwsAsync(async () => {
+    ctx.req = createReadStream('test.json');
     ctx.method = 'POST';
     await handler(ctx);
   });
@@ -125,8 +137,10 @@ test('handler', async (t) => {
   await handler(ctx);
   t.deepEqual(ctx.body, { name: 'cqq', method: 'GET' });
   ctx.method = 'POST';
+  ctx.req = createReadStream('test.json');
   await handler(ctx);
   t.deepEqual(ctx.body, { name: 'cqq', method: 'POST' });
+  t.deepEqual(ctx.contentData, { name: 'test' });
   await t.throwsAsync(async () => {
     ctx.method = 'GET';
     ctx.path = '/404';
@@ -152,6 +166,12 @@ test('handler', async (t) => {
   t.is(ctx.body, null);
   t.is(ctx.status, 204);
   t.is(ctx.get('allow'), 'OPTIONS, GET, POST');
+
+  ctx.path = '/post/1';
+  ctx.method = 'POST';
+  ctx.req = createReadStream('test.json');
+  await handler(ctx);
+  t.deepEqual(ctx.body, { name: 'test' });
 });
 
 test('api nest', async (t) => {
@@ -161,6 +181,9 @@ test('api nest', async (t) => {
         ctx.throw(405);
       }
       const prefix = `/${ctx.matches[1]}`;
+      if (ctx.method === 'POST') {
+        ctx.req = createReadStream('test2.json');
+      }
       return api({
         [`${prefix}/cqq`]: {
           get: () => ({
@@ -196,29 +219,35 @@ test('api nest', async (t) => {
   t.is(ctx.body.name, 'cqq');
   t.is(ctx.body.method, 'GET');
   await t.throwsAsync(async () => {
+    ctx.req = createReadStream('test.json');
     ctx.method = 'POST';
     await handler(ctx);
   });
   await t.throwsAsync(async () => {
+    ctx.req = createReadStream('test.json');
     ctx.method = 'POST';
     ctx.path = '/1/notfound';
     await handler(ctx);
   });
   ctx.method = 'POST';
   ctx.path = '/1/quan';
+  ctx.req = createReadStream('test2.json');
   await handler(ctx);
   t.is(ctx.body.method, 'POST');
   t.is(ctx.body.name, 'quan');
-  ctx.method = 'OPTIONS';
-  ctx.path = '/1/333';
+  t.deepEqual(ctx.contentData, { name: 'test' });
   await t.throwsAsync(async () => {
+    ctx.method = 'OPTIONS';
+    ctx.path = '/1/333';
     await handler(ctx);
   });
+  ctx.method = 'OPTIONS';
   ctx.path = '/1/test';
   await handler(ctx);
   t.is(ctx.get('allow'), 'OPTIONS, GET, POST');
-  ctx.method = 'PUT';
   await t.throwsAsync(async () => {
+    ctx.req = createReadStream('test.json');
+    ctx.method = 'PUT';
     await handler(ctx);
   });
 });
@@ -227,7 +256,7 @@ test('validate', async (t) => {
   const handler = api({
     '/cqq': {
       get: {
-        validate: {
+        type: {
           type: 'object',
           properties: {
             name: {
@@ -238,8 +267,8 @@ test('validate', async (t) => {
               type: 'integer',
               nullable: false,
             },
-            additionalProperties: true,
           },
+          additionalProperties: true,
           required: ['name', 'age'],
         },
         convert: {
@@ -247,6 +276,24 @@ test('validate', async (t) => {
           age: 'integer',
         },
         fn: (ctx) => ({ name: 'cqq', age: ctx.query.age }),
+      },
+      post: {
+        typeInput: {
+          type: 'object',
+          properties: {
+            name: {
+              type: 'string',
+              nullable: false,
+            },
+            age: {
+              type: 'integer',
+              nullable: false,
+            },
+          },
+          additionalProperties: false,
+          required: ['name'],
+        },
+        fn: (ctx) => ({ name: ctx.contentData.name }),
       },
     },
   });
@@ -271,4 +318,63 @@ test('validate', async (t) => {
   await handler(ctx);
   t.is(ctx.body.name, 'cqq');
   t.is(ctx.body.age, 22);
+  ctx.method = 'POST'
+  ctx.req = createReadStream('test3.json');
+  await handler(ctx);
+  t.deepEqual(ctx.body, { name: 'test3' });
+  await t.throwsAsync(async () => {
+    ctx.req = createReadStream('test4.json');
+    await handler(ctx);
+  });
+  await t.throwsAsync(async () => {
+    ctx.req = createReadStream('test5.json');
+    await handler(ctx);
+  });
+  ctx.req = createReadStream('test3.json');
+  await handler(ctx);
+  t.deepEqual(ctx.body, { name: 'test3' });
+});
+
+test('default value', async (t) => {
+  const handler = api({
+    '/cqq': {
+      post: {
+        query: {
+          age: 12,
+          cqq: '123',
+        },
+        contentData: {
+          ccc: 'bar',
+          name: 'contentData',
+        },
+        convert: {
+          age: 'integer',
+          cqq: 'string',
+        },
+        fn: (ctx) => ({
+          name: ctx.contentData.name,
+          ccc: ctx.contentData.ccc,
+          age: ctx.query.age,
+          cqq: ctx.query.cqq,
+        }),
+      },
+    },
+  });
+  const ctx = {
+    method: 'POST',
+    path: '/cqq',
+    set: (name, value) => {
+      ctx[name] = value;
+    },
+    get: (name) => ctx[name],
+    throw: (statusCode) => {
+      throw createError(statusCode == null ? 500 : statusCode);
+    },
+  };
+  ctx.req = createReadStream('test4.json');
+  ctx.query = {
+    cqq: 'cqq',
+  };
+  await handler(ctx);
+  t.deepEqual(ctx.body, { cqq: 'cqq', age: 12, name: 'test4', ccc: 'bar' });
 });

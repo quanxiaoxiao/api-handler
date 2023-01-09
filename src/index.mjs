@@ -1,5 +1,6 @@
 import _ from 'lodash';
 import Ajv from 'ajv';
+import { receiveData } from '@quanxiaoxiao/about-http';
 import { pathToRegexp } from 'path-to-regexp';
 import convertData from '@quanxiaoxiao/data-convert';
 
@@ -26,8 +27,10 @@ export const parse = (apis) => {
     }
     const defaultOptions = {
       pathname,
-      validate: null,
-      defaultQuery: null,
+      type: null,
+      typeInput: null,
+      query: null,
+      contentData: null,
       convert: null,
       regexp: pathToRegexp(pathname),
     };
@@ -65,9 +68,11 @@ export const parse = (apis) => {
             _id: `${pathname}@${method}`,
             method,
             fn: fn.fn,
-            validate: fn.validate ? new Ajv().compile(fn.validate) : null,
+            type: fn.type ? new Ajv().compile(fn.type) : null,
+            typeInput: fn.typeInput ? new Ajv().compile(fn.typeInput) : null,
             convert: fn.convert ? convertData(fn.convert) : null,
-            defaultQuery: fn.defaultQuery || null,
+            query: fn.query || null,
+            contentData: fn.contentData || null,
           });
         } else {
           result.push({
@@ -112,12 +117,39 @@ const handler = (apis) => {
       ctx.throw(405);
     }
     if (apiItem.convert) {
-      ctx.query = apiItem.convert(ctx.query);
+      ctx.query = apiItem.convert(ctx.query || {});
     }
-    if (apiItem.validate && !apiItem.validate(ctx.query)) {
-      ctx.throw(400, JSON.stringify(apiItem.validate.errors));
+    if (apiItem.query) {
+      ctx.query = _.merge(apiItem.query, Object.keys(ctx.query).reduce((acc, key) => {
+        const v = ctx.query[key];
+        if (v == null || v === '') {
+          return acc;
+        }
+        return {
+          ...acc,
+          [key]: v,
+        };
+      }, {}));
+    }
+    if (apiItem.type && !apiItem.type(ctx.query)) {
+      ctx.throw(400, JSON.stringify(apiItem.type.errors));
     }
     ctx.matches = apiItem.regexp.exec(path);
+    if (method === 'PUT' || method === 'POST') {
+      try {
+        const buf = await receiveData(ctx.req);
+        let contentData = JSON.parse(buf);
+        if (apiItem.contentData) {
+          contentData = _.merge(apiItem.contentData, contentData);
+        }
+        if (apiItem.typeInput && !apiItem.typeInput(contentData)) {
+          ctx.throw(400, JSON.stringify(apiItem.typeInput.errors));
+        }
+        ctx.contentData = contentData;
+      } catch (error) {
+        ctx.throw(400, error.message);
+      }
+    }
     const ret = await apiItem.fn(ctx);
     if (typeof ret === 'undefined') {
       ctx.throw(404);

@@ -1,7 +1,14 @@
 {
   "extends": ["eslint-config-airbnb"],
   "env": {
+    "es6": true,
     "node": true
+  },
+  "parserOptions": {
+    "sourceType": "module",
+    "parser": "babel-eslint",
+    "ecmaVersion": 2019,
+    "allowImportExportEverywhere": true
   },
   "rules": {
     "no-console": 0,
