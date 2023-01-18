@@ -90,72 +90,80 @@ export const parse = (apis) => {
 
 const handler = (apis) => {
   const apiList = parse(apis);
-  return async (ctx) => {
+  return async (ctx, next) => {
     const { path } = ctx;
     const method = ctx.method.toUpperCase();
     const apiMatchList = apiList.filter((d) => d.regexp.exec(path));
     if (apiMatchList.length === 0) {
-      ctx.throw(404);
-    }
-    if (method === 'OPTIONS') {
+      await next();
+    } else if (method === 'OPTIONS') {
       ctx.status = 204;
       const optionItem = apiMatchList.find((d) => d.method === 'OPTIONS');
       if (optionItem) {
         ctx.matches = optionItem.regexp.exec(path);
-        await optionItem.fn(ctx);
-        return null;
+        await optionItem.fn(ctx, next);
+      } else {
+        ctx.set(
+          'allow',
+          ['OPTIONS', ...apiMatchList.map((item) => item.method)].join(', '),
+        );
+        ctx.body = null;
       }
-      ctx.set(
-        'allow',
-        ['OPTIONS', ...apiMatchList.map((item) => item.method)].join(', '),
-      );
-      ctx.body = null;
-      return null;
-    }
-    const apiItem = apiMatchList.find((d) => method === d.method);
-    if (!apiItem) {
-      ctx.throw(405);
-    }
-    if (apiItem.convert) {
-      ctx.query = apiItem.convert(ctx.query || {});
-    }
-    if (apiItem.query) {
-      ctx.query = _.merge(apiItem.query, Object.keys(ctx.query).reduce((acc, key) => {
-        const v = ctx.query[key];
-        if (v == null || v === '') {
-          return acc;
+    } else {
+      const apiItem = apiMatchList.find((d) => method === d.method);
+      if (!apiItem) {
+        ctx.throw(405);
+      }
+      if (apiItem.convert) {
+        ctx.query = apiItem.convert(ctx.query || {});
+      }
+      if (apiItem.query) {
+        ctx.query = _.merge(apiItem.query, Object.keys(ctx.query).reduce((acc, key) => {
+          const v = ctx.query[key];
+          if (v == null || v === '') {
+            return acc;
+          }
+          return {
+            ...acc,
+            [key]: v,
+          };
+        }, {}));
+      }
+      if (apiItem.type && !apiItem.type(ctx.query)) {
+        ctx.throw(400, JSON.stringify(apiItem.type.errors));
+      }
+      ctx.matches = apiItem.regexp.exec(path);
+      if (method === 'POST' || method === 'PUT') {
+        if (/application\/json/i.test(ctx.get('content-type'))) {
+          if (!ctx.contentData && ctx.req.readable) {
+            try {
+              const buf = await receiveData(ctx.req);
+              const contentData = JSON.parse(buf);
+              ctx.contentData = apiItem.contentData
+                ? _.merge(apiItem.contentData, contentData)
+                : contentData;
+            } catch (error) {
+              ctx.throw(400);
+            }
+          }
+        } else if (ctx.contentData) {
+          delete ctx.contentData;
         }
-        return {
-          ...acc,
-          [key]: v,
-        };
-      }, {}));
-    }
-    if (apiItem.type && !apiItem.type(ctx.query)) {
-      ctx.throw(400, JSON.stringify(apiItem.type.errors));
-    }
-    ctx.matches = apiItem.regexp.exec(path);
-    if (/application\/json/i.test(ctx.get('content-type')) && (method === 'PUT' || method === 'POST')) {
-      try {
-        const buf = await receiveData(ctx.req);
-        let contentData = JSON.parse(buf);
-        if (apiItem.contentData) {
-          contentData = _.merge(apiItem.contentData, contentData);
-        }
-        if (apiItem.typeInput && !apiItem.typeInput(contentData)) {
-          ctx.throw(400, JSON.stringify(apiItem.typeInput.errors));
-        }
-        ctx.contentData = contentData;
-      } catch (error) {
-        ctx.throw(400, error.message);
+      }
+      if (apiItem.typeInput
+        && ctx.contentData
+        && (method === 'POST' || method === 'POST')
+        && !apiItem.typeInput(ctx.contentData)
+      ) {
+        ctx.throw(400, JSON.stringify(apiItem.typeInput.errors));
+      }
+      const ret = await apiItem.fn(ctx, next);
+      if (typeof ret === 'function') {
+        await ret(ctx, next);
+      } else {
+        ctx.body = ret;
       }
     }
-    const ret = await apiItem.fn(ctx);
-    if (typeof ret === 'undefined') {
-      ctx.throw(404);
-    }
-    ctx.body = ret;
-    return ret;
   };
 };
 
