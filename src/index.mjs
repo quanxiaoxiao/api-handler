@@ -2,7 +2,7 @@ import _ from 'lodash';
 import Ajv from 'ajv';
 import { receiveData } from '@quanxiaoxiao/about-http';
 import { pathToRegexp } from 'path-to-regexp';
-import convertData from '@quanxiaoxiao/data-convert';
+import { convertDataValue } from '@quanxiaoxiao/data-convert';
 
 const METHODS = ['GET', 'POST', 'DELETE', 'PUT'];
 
@@ -12,8 +12,7 @@ export const parse = (apis) => {
   }
   const pathnameList = Object.keys(apis);
   const result = [];
-  const len = pathnameList.length;
-  for (let i = 0; i < len; i++) {
+  for (let i = 0; i < pathnameList.length; i++) {
     const pathname = pathnameList[i];
     if (pathname[0] !== '/') {
       console.warn(`pathname \`${pathname}\` invalid`);
@@ -64,10 +63,30 @@ export const parse = (apis) => {
         }
         let typeValidate = null;
         let typeInputValidate = null;
+        let convert = null;
         if (fn.fn) {
           try {
             if (fn.type) {
               typeValidate = new Ajv({ strict: false }).compile(fn.type);
+              const properties = Object.keys(_.get(fn, 'type.properties', {}));
+              const fieldList = properties
+                .filter((propertyName) => {
+                  const typeName = _.get(fn, `type.properties.${propertyName}.type`);
+                  if (typeof typeName !== 'string') {
+                    return false;
+                  }
+                  return ['string', 'number', 'integer', 'boolean'].includes(typeName);
+                })
+                .map((propertyName) => ({
+                  name: propertyName,
+                  type: _.get(fn, `type.properties.${propertyName}.type`),
+                }));
+              if (!_.isEmpty(fieldList)) {
+                convert = (v) => fieldList.reduce((acc, cur) => ({
+                  ...acc,
+                  [cur.name]: convertDataValue(_.get(v, cur.name), cur.type),
+                }), {});
+              }
             }
           } catch (error) {
             console.warn(`\`${pathname}\` \`${methodList[j]}\` parse type fail, ${error.message}`);
@@ -86,7 +105,7 @@ export const parse = (apis) => {
             fn: fn.fn,
             type: typeValidate,
             typeInput: typeInputValidate,
-            convert: fn.convert ? convertData(fn.convert) : null,
+            convert,
             query: fn.query || null,
             contentData: fn.contentData || null,
           });

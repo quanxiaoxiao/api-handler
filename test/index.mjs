@@ -119,11 +119,11 @@ test('receiveData', async (t) => {
       },
     },
     '/test2': {
-      post: (ctx) => ctx.contentData ? ({
+      post: (ctx) => (ctx.contentData ? ({
         name: ctx.contentData.name,
       }) : ({
         name: 'xxx',
-      }),
+      })),
     },
   });
   const ctx = {
@@ -220,4 +220,45 @@ test('nest', async (t) => {
   };
   await handler(ctx, () => {});
   t.deepEqual(ctx.body, { name: 'cqq' });
+});
+
+test('type', async (t) => {
+  const handler = api({
+    '/test/cqq': {
+      get: {
+        type: {
+          type: 'object',
+          properties: {
+            name: {
+              type: 'string',
+            },
+            age: {
+              type: 'integer',
+            },
+          },
+          required: ['age'],
+        },
+        fn: (ctx) => ({
+          name: ctx.query.name,
+          age: ctx.query.age,
+        }),
+      },
+    },
+  });
+  const ctx = {
+    method: 'GET',
+    path: '/test/cqq',
+    set: (name, value) => {
+      ctx[name] = value;
+    },
+    get: (name) => ctx[name],
+    throw: () => {
+    },
+  };
+  ctx.query = {
+    name: 'cqq',
+    age: '30',
+  };
+  await handler(ctx, () => {});
+  t.deepEqual(ctx.body, { name: 'cqq', age: 30 });
 });
