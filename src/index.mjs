@@ -62,14 +62,30 @@ export const parse = (apis) => {
           console.warn(`\`${pathname}\` \`${methodList[j]}\` handler is not function`);
           continue;
         }
+        let typeValidate = null;
+        let typeInputValidate = null;
         if (fn.fn) {
+          try {
+            if (fn.type) {
+              typeValidate = new Ajv({ strict: false }).compile(fn.type);
+            }
+          } catch (error) {
+            console.warn(`\`${pathname}\` \`${methodList[j]}\` parse type fail, ${error.message}`);
+          }
+          try {
+            if (fn.typeInput) {
+              typeInputValidate = new Ajv({ strict: false }).compile(fn.typeInput);
+            }
+          } catch (error) {
+            console.warn(`\`${pathname}\` \`${methodList[j]}\` parse typeInput fail, ${error.message}`);
+          }
           result.push({
             ...defaultOptions,
             _id: `${pathname}@${method}`,
             method,
             fn: fn.fn,
-            type: fn.type ? new Ajv({ strict: false }).compile(fn.type) : null,
-            typeInput: fn.typeInput ? new Ajv({ strict: false }).compile(fn.typeInput) : null,
+            type: typeValidate,
+            typeInput: typeInputValidate,
             convert: fn.convert ? convertData(fn.convert) : null,
             query: fn.query || null,
             contentData: fn.contentData || null,
@@ -133,26 +149,23 @@ const handler = (apis) => {
         ctx.throw(400, JSON.stringify(apiItem.type.errors));
       }
       ctx.matches = apiItem.regexp.exec(path);
-      if (method === 'POST' || method === 'PUT') {
-        if (/application\/json/i.test(ctx.get('content-type'))) {
-          if (!ctx.contentData && ctx.req.readable) {
-            try {
-              const buf = await receiveData(ctx.req);
-              const contentData = JSON.parse(buf);
-              ctx.contentData = apiItem.contentData
-                ? _.merge(apiItem.contentData, contentData)
-                : contentData;
-            } catch (error) {
-              ctx.throw(400);
-            }
+      if (apiItem.typeInput) {
+        if (!ctx.contentData && ctx.req.readable) {
+          try {
+            const buf = await receiveData(ctx.req);
+            const contentData = JSON.parse(buf);
+            ctx.contentData = apiItem.contentData
+              ? _.merge(apiItem.contentData, contentData)
+              : contentData;
+          } catch (error) {
+            ctx.throw(400);
           }
-        } else if (ctx.contentData) {
-          delete ctx.contentData;
         }
+      } else if (ctx.contentData) {
+        delete ctx.contentData;
       }
       if (apiItem.typeInput
         && ctx.contentData
-        && (method === 'POST' || method === 'POST')
         && !apiItem.typeInput(ctx.contentData)
       ) {
         ctx.throw(400, JSON.stringify(apiItem.typeInput.errors));

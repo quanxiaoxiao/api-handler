@@ -109,9 +109,14 @@ test('handler callback', async (t) => {
 test('receiveData', async (t) => {
   const handler = api({
     '/test': {
-      post: (ctx) => ({
-        name: ctx.contentData.name,
-      }),
+      post: {
+        typeInput: {
+          type: 'object',
+        },
+        fn: (ctx) => ({
+          name: ctx.contentData.name,
+        }),
+      },
     },
     '/test2': {
       post: (ctx) => ctx.contentData ? ({
