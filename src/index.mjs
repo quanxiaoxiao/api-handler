@@ -30,7 +30,6 @@ export const parse = (apis) => {
       typeInput: null,
       query: null,
       contentData: null,
-      convert: null,
       regexp: pathToRegexp(pathname),
     };
     if (type === 'function') {
@@ -63,30 +62,10 @@ export const parse = (apis) => {
         }
         let typeValidate = null;
         let typeInputValidate = null;
-        let convert = null;
         if (fn.fn) {
           try {
             if (fn.type) {
               typeValidate = new Ajv({ strict: false }).compile(fn.type);
-              const properties = Object.keys(_.get(fn, 'type.properties', {}));
-              const fieldList = properties
-                .filter((propertyName) => {
-                  const typeName = _.get(fn, `type.properties.${propertyName}.type`);
-                  if (typeof typeName !== 'string') {
-                    return false;
-                  }
-                  return ['string', 'number', 'integer', 'boolean'].includes(typeName);
-                })
-                .map((propertyName) => ({
-                  name: propertyName,
-                  type: _.get(fn, `type.properties.${propertyName}.type`),
-                }));
-              if (!_.isEmpty(fieldList)) {
-                convert = (v) => fieldList.reduce((acc, cur) => ({
-                  ...acc,
-                  [cur.name]: convertDataValue(_.get(v, cur.name), cur.type),
-                }), {});
-              }
             }
           } catch (error) {
             console.warn(`\`${pathname}\` \`${methodList[j]}\` parse type fail, ${error.message}`);
@@ -105,7 +84,6 @@ export const parse = (apis) => {
             fn: fn.fn,
             type: typeValidate,
             typeInput: typeInputValidate,
-            convert,
             query: fn.query || null,
             contentData: fn.contentData || null,
           });
@@ -149,8 +127,21 @@ const handler = (apis) => {
       if (!apiItem) {
         ctx.throw(405);
       }
-      if (apiItem.convert) {
-        ctx.query = apiItem.convert(ctx.query || {});
+      if (_.isPlainObject(_.get(apiItem, 'type.schema.properties'))) {
+        const { properties } = apiItem.type.schema;
+        ctx.query = Object.keys(properties)
+          .filter((propertyName) => {
+            const typeName = _.get(properties, `${propertyName}.type`);
+            return ['string', 'number', 'integer', 'boolean'].includes(typeName);
+          })
+          .map((propertyName) => ({
+            name: propertyName,
+            type: properties[propertyName].type,
+          }))
+          .reduce((acc, cur) => ({
+            ...acc,
+            [cur.name]: convertDataValue(_.get(ctx.query, cur.name), cur.type),
+          }), {});
       }
       if (apiItem.query) {
         ctx.query = _.merge(apiItem.query, Object.keys(ctx.query).reduce((acc, key) => {
