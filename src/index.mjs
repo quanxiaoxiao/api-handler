@@ -2,7 +2,7 @@ import _ from 'lodash';
 import Ajv from 'ajv';
 import { receiveData } from '@quanxiaoxiao/about-http';
 import { pathToRegexp } from 'path-to-regexp';
-import { convertDataValue } from '@quanxiaoxiao/data-convert';
+import { convertDataValue, merge } from '@quanxiaoxiao/data-convert';
 
 const METHODS = ['GET', 'POST', 'DELETE', 'PUT'];
 
@@ -145,7 +145,7 @@ const handler = (apis) => {
           }), {});
       }
       if (apiItem.query) {
-        ctx.contentQuery = _.merge(apiItem.query, Object.keys(ctx.contentQuery).reduce((acc, key) => {
+        ctx.contentQuery = merge(apiItem.query, Object.keys(ctx.contentQuery).reduce((acc, key) => {
           const v = ctx.contentQuery[key];
           if (v == null || v === '') {
             return acc;
@@ -166,7 +166,7 @@ const handler = (apis) => {
             const buf = await receiveData(ctx.req);
             const contentData = JSON.parse(buf);
             ctx.contentData = apiItem.contentData
-              ? _.merge(apiItem.contentData, contentData)
+              ? merge(apiItem.contentData, contentData)
               : contentData;
           } catch (error) {
             ctx.throw(400);
