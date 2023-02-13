@@ -239,8 +239,8 @@ test('type', async (t) => {
           required: ['age'],
         },
         fn: (ctx) => ({
-          name: ctx.query.name,
-          age: ctx.query.age,
+          name: ctx.contentQuery.name,
+          age: ctx.contentQuery.age,
         }),
       },
     },

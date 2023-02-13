@@ -127,9 +127,10 @@ const handler = (apis) => {
       if (!apiItem) {
         ctx.throw(405);
       }
+      ctx.contentQuery = {};
       if (_.isPlainObject(_.get(apiItem, 'type.schema.properties'))) {
         const { properties } = apiItem.type.schema;
-        ctx.query = Object.keys(properties)
+        ctx.contentQuery = Object.keys(properties)
           .filter((propertyName) => {
             const typeName = _.get(properties, `${propertyName}.type`);
             return ['string', 'number', 'integer', 'boolean'].includes(typeName);
@@ -144,8 +145,8 @@ const handler = (apis) => {
           }), {});
       }
       if (apiItem.query) {
-        ctx.query = _.merge(apiItem.query, Object.keys(ctx.query).reduce((acc, key) => {
-          const v = ctx.query[key];
+        ctx.contentQuery = _.merge(apiItem.query, Object.keys(ctx.contentQuery).reduce((acc, key) => {
+          const v = ctx.contentQuery[key];
           if (v == null || v === '') {
             return acc;
           }
@@ -155,7 +156,7 @@ const handler = (apis) => {
           };
         }, {}));
       }
-      if (apiItem.type && !apiItem.type(ctx.query)) {
+      if (apiItem.type && !apiItem.type(ctx.contentQuery)) {
         ctx.throw(400, JSON.stringify(apiItem.type.errors));
       }
       ctx.matches = apiItem.regexp.exec(path);
