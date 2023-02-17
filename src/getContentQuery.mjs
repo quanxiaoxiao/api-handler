@@ -26,7 +26,18 @@ const getContentQuery = (
     properties,
     merge(
       _.isPlainObject(queryDefault) ? queryDefault : {},
-      _.isPlainObject(raw) ? raw : {},
+      Object
+        .keys(_.isPlainObject(raw) ? raw : {})
+        .reduce((acc, dataKey) => {
+          const v = raw[dataKey];
+          if (v == null || v === '') {
+            return acc;
+          }
+          return {
+            ...acc,
+            [dataKey]: v,
+          };
+        }, {}),
     ),
   );
 };

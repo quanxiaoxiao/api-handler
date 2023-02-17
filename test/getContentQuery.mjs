@@ -152,4 +152,100 @@ test('getContentQuery', (t) => {
       age: null,
     },
   );
+  t.deepEqual(
+    getContentQuery(
+      {
+        name: {
+          type: 'string',
+        },
+        age: {
+          type: 'integer',
+        },
+      },
+      {
+        name: 'quan',
+        age: 14,
+      },
+      {
+        name: '',
+        age: '',
+      },
+    ),
+    {
+      name: 'quan',
+      age: 14,
+    },
+  );
+  t.deepEqual(
+    getContentQuery(
+      {
+        name: {
+          type: 'string',
+        },
+        age: {
+          type: 'integer',
+        },
+      },
+      {
+        name: 'quan',
+        age: 14,
+      },
+      {
+        name: '3',
+        age: null,
+      },
+    ),
+    {
+      name: '3',
+      age: 14,
+    },
+  );
+  t.deepEqual(
+    getContentQuery(
+      {
+        name: {
+          type: 'string',
+        },
+        age: {
+          type: 'integer',
+        },
+      },
+      {
+        name: 'quan',
+        age: 14,
+      },
+      {
+        name: '3',
+        age: 0,
+      },
+    ),
+    {
+      name: '3',
+      age: 0,
+    },
+  );
+  t.deepEqual(
+    getContentQuery(
+      {
+        name: {
+          type: 'string',
+        },
+        age: {
+          type: 'integer',
+        },
+      },
+      {
+        name: 'quan',
+        age: 0,
+      },
+      {
+        name: '  ',
+        age: '',
+      },
+    ),
+    {
+      name: '  ',
+      age: 0,
+    },
+  );
 });
