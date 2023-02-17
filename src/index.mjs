@@ -2,7 +2,8 @@ import _ from 'lodash';
 import Ajv from 'ajv';
 import { receiveData } from '@quanxiaoxiao/about-http';
 import { pathToRegexp } from 'path-to-regexp';
-import { convertDataValue, merge } from '@quanxiaoxiao/data-convert';
+import { merge, select } from '@quanxiaoxiao/data-convert';
+import getContentQuery from './getContentQuery.mjs';
 
 const METHODS = ['GET', 'POST', 'DELETE', 'PUT'];
 
@@ -29,72 +30,74 @@ export const parse = (apis) => {
       type: null,
       typeInput: null,
       query: null,
-      contentData: null,
+      data: null,
+      select: null,
+      fn: null,
       regexp: pathToRegexp(pathname),
     };
     if (type === 'function') {
       METHODS.forEach((method) => {
         result.push({
           ...defaultOptions,
-          _id: `${pathname}@${method}`,
           method,
           fn: obj,
         });
       });
       result.push({
         ...defaultOptions,
-        _id: `${pathname}@OPTIONS`,
         method: 'OPTIONS',
         fn: obj,
       });
     } else {
       const methodList = Object.keys(obj);
+      const options = {
+        ...defaultOptions,
+      };
       for (let j = 0; j < methodList.length; j++) {
         const method = methodList[j].toUpperCase();
         if (!METHODS.includes(method)) {
           console.warn(`\`${pathname}\` method \`${methodList[j]}\` invalid`);
           continue;
         }
+        options.method = method;
         const fn = obj[methodList[j]];
         if (fn == null || (typeof fn !== 'function' && typeof fn.fn !== 'function')) {
           console.warn(`\`${pathname}\` \`${methodList[j]}\` handler is not function`);
           continue;
         }
-        let typeValidate = null;
-        let typeInputValidate = null;
         if (fn.fn) {
           try {
             if (fn.type) {
-              typeValidate = new Ajv({ strict: false }).compile(fn.type);
+              options.type = new Ajv({ strict: false }).compile(fn.type);
             }
           } catch (error) {
             console.warn(`\`${pathname}\` \`${methodList[j]}\` parse type fail, ${error.message}`);
           }
           try {
             if (fn.typeInput) {
-              typeInputValidate = new Ajv({ strict: false }).compile(fn.typeInput);
+              options.typeInput = new Ajv({ strict: false }).compile(fn.typeInput);
             }
           } catch (error) {
             console.warn(`\`${pathname}\` \`${methodList[j]}\` parse typeInput fail, ${error.message}`);
           }
-          result.push({
-            ...defaultOptions,
-            _id: `${pathname}@${method}`,
-            method,
-            fn: fn.fn,
-            type: typeValidate,
-            typeInput: typeInputValidate,
-            query: fn.query || null,
-            contentData: fn.contentData || null,
-          });
+          try {
+            if (fn.select) {
+              options.select = select(fn.select);
+            }
+          } catch (error) {
+            console.warn(`\`${pathname}\` \`${methodList[j]}\` parse select fail, ${error.message}`);
+          }
+          options.fn = fn.fn;
+          if (fn.query) {
+            options.query = fn.query;
+          }
+          if (fn.data) {
+            options.data = fn.data;
+          }
         } else {
-          result.push({
-            ...defaultOptions,
-            _id: `${pathname}@${method}`,
-            method,
-            fn,
-          });
+          options.fn = fn;
         }
+        result.push(options);
       }
     }
   }
@@ -127,56 +130,32 @@ const handler = (apis) => {
       if (!apiItem) {
         ctx.throw(405);
       }
-      ctx.contentQuery = {};
-      if (_.isPlainObject(_.get(apiItem, 'type.schema.properties'))) {
-        const { properties } = apiItem.type.schema;
-        ctx.contentQuery = Object.keys(properties)
-          .filter((propertyName) => {
-            const typeName = _.get(properties, `${propertyName}.type`);
-            return ['string', 'number', 'integer', 'boolean'].includes(typeName);
-          })
-          .map((propertyName) => ({
-            name: propertyName,
-            type: properties[propertyName].type,
-          }))
-          .reduce((acc, cur) => ({
-            ...acc,
-            [cur.name]: convertDataValue(_.get(ctx.query, cur.name), cur.type),
-          }), {});
-      }
-      if (apiItem.query) {
-        ctx.contentQuery = merge(apiItem.query, Object.keys(ctx.contentQuery).reduce((acc, key) => {
-          const v = ctx.contentQuery[key];
-          if (v == null || v === '') {
-            return acc;
-          }
-          return {
-            ...acc,
-            [key]: v,
-          };
-        }, {}));
-      }
+      ctx.contentQuery = getContentQuery(
+        _.get(apiItem, 'type.schema.properties'),
+        apiItem.query,
+        ctx.query,
+      );
       if (apiItem.type && !apiItem.type(ctx.contentQuery)) {
         ctx.throw(400, JSON.stringify(apiItem.type.errors));
       }
       ctx.matches = apiItem.regexp.exec(path);
       if (apiItem.typeInput) {
-        if (!ctx.contentData && ctx.req.readable) {
+        if (typeof ctx.contentData === 'undefined' && ctx.req.readable) {
           try {
             const buf = await receiveData(ctx.req);
             const contentData = JSON.parse(buf);
-            ctx.contentData = apiItem.contentData
-              ? merge(apiItem.contentData, contentData)
+            ctx.contentData = apiItem.data
+              ? merge(apiItem.data, contentData)
               : contentData;
           } catch (error) {
-            ctx.throw(400);
+            ctx.throw(400, error.message);
           }
         }
-      } else if (ctx.contentData) {
+      } else if (typeof ctx.contentData !== 'undefined') {
         delete ctx.contentData;
       }
       if (apiItem.typeInput
-        && ctx.contentData
+        && typeof ctx.contentData !== 'undefined'
         && !apiItem.typeInput(ctx.contentData)
       ) {
         ctx.throw(400, JSON.stringify(apiItem.typeInput.errors));
@@ -185,7 +164,7 @@ const handler = (apis) => {
       if (typeof ret === 'function') {
         await ret(ctx, next);
       } else {
-        ctx.body = ret;
+        ctx.body = apiItem.select ? apiItem.select(ret) : ret;
       }
     }
   };

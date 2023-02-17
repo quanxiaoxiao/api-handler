@@ -142,6 +142,7 @@ test('receiveData', async (t) => {
   await handler(ctx, () => {
   });
   t.deepEqual(ctx.body, { name: 'test' });
+  delete ctx.contentData;
   ctx.path = '/test2';
   ctx.req = createReadStream('test3.json');
   ctx.set('content-type', 'octec/stream');
@@ -190,7 +191,7 @@ test('checkDataValid', async (t) => {
   ctx.set('content-type', 'application/json');
   ctx.method = 'POST';
   await handler(ctx, () => {});
-  ctx.contentData = null;
+  delete ctx.contentData;
   ctx.req = createReadStream('test5.json');
   ctx.set('content-type', 'application/json');
   await handler(ctx, () => {});
@@ -261,4 +262,41 @@ test('type', async (t) => {
   };
   await handler(ctx, () => {});
   t.deepEqual(ctx.body, { name: 'cqq', age: 30 });
+});
+
+test('select', async (t) => {
+  const handler = api({
+    '/test/cqq': {
+      get: {
+        select: {
+          type: 'object',
+          properties: {
+            name: '$name:string',
+            age: '$age:integer',
+          },
+        },
+        fn: () => ({
+          _id: 'asdf',
+          name: 'cqq',
+          age: 33,
+          foo: 'bar',
+        }),
+      },
+    },
+  });
+  const ctx = {
+    method: 'GET',
+    path: '/test/cqq',
+    set: (name, value) => {
+      ctx[name] = value;
+    },
+    get: (name) => ctx[name],
+    throw: () => {
+    },
+  };
+  await handler(ctx, () => {});
+  t.deepEqual(ctx.body, {
+    name: 'cqq',
+    age: 33,
+  });
 });
