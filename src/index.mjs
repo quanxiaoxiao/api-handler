@@ -50,16 +50,16 @@ export const parse = (apis) => {
       });
     } else {
       const methodList = Object.keys(obj);
-      const options = {
-        ...defaultOptions,
-      };
       for (let j = 0; j < methodList.length; j++) {
         const method = methodList[j].toUpperCase();
         if (!METHODS.includes(method)) {
           console.warn(`\`${pathname}\` method \`${methodList[j]}\` invalid`);
           continue;
         }
-        options.method = method;
+        const options = {
+          ...defaultOptions,
+          method,
+        };
         const fn = obj[methodList[j]];
         if (fn == null || (typeof fn !== 'function' && typeof fn.fn !== 'function')) {
           console.warn(`\`${pathname}\` \`${methodList[j]}\` handler is not function`);
