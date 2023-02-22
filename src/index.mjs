@@ -1,5 +1,6 @@
 import _ from 'lodash';
 import Ajv from 'ajv';
+import createError from 'http-errors';
 import { receiveData } from '@quanxiaoxiao/about-http';
 import { pathToRegexp } from 'path-to-regexp';
 import { merge, select } from '@quanxiaoxiao/data-convert';
@@ -31,7 +32,7 @@ export const parse = (apis) => {
       typeInput: null,
       query: null,
       data: null,
-      select: null,
+      select: (d) => d,
       fn: null,
       regexp: pathToRegexp(pathname),
     };
@@ -49,13 +50,19 @@ export const parse = (apis) => {
         fn: obj,
       });
     } else {
-      const methodList = Object.keys(obj);
+      const methodList = Object.keys(obj).filter((method) => METHODS.includes(method.toUpperCase()));
+      if (obj.select) {
+        try {
+          defaultOptions.select = select(obj.select);
+        } catch (error) {
+          const errorMessage = error.message;
+          defaultOptions.select = () => {
+            throw createError(500, errorMessage);
+          };
+        }
+      }
       for (let j = 0; j < methodList.length; j++) {
         const method = methodList[j].toUpperCase();
-        if (!METHODS.includes(method)) {
-          console.warn(`\`${pathname}\` method \`${methodList[j]}\` invalid`);
-          continue;
-        }
         const options = {
           ...defaultOptions,
           method,
@@ -71,21 +78,33 @@ export const parse = (apis) => {
               options.type = new Ajv({ strict: false }).compile(fn.type);
             }
           } catch (error) {
-            console.warn(`\`${pathname}\` \`${methodList[j]}\` parse type fail, ${error.message}`);
+            const errorMessage = error.message;
+            console.warn(`\`${pathname}\` \`${methodList[j]}\` parse type fail, ${errorMessage}`);
+            options.type = () => {
+              throw createError(500, errorMessage);
+            };
           }
           try {
             if (fn.typeInput) {
               options.typeInput = new Ajv({ strict: false }).compile(fn.typeInput);
             }
           } catch (error) {
+            const errorMessage = error.message;
             console.warn(`\`${pathname}\` \`${methodList[j]}\` parse typeInput fail, ${error.message}`);
+            options.typeInput = () => {
+              throw createError(500, errorMessage);
+            };
           }
           try {
             if (fn.select) {
               options.select = select(fn.select);
             }
           } catch (error) {
+            const errorMessage = error.message;
             console.warn(`\`${pathname}\` \`${methodList[j]}\` parse select fail, ${error.message}`);
+            options.select = () => {
+              throw createError(500, errorMessage);
+            };
           }
           options.fn = fn.fn;
           if (fn.query) {
@@ -164,7 +183,7 @@ const handler = (apis) => {
       if (typeof ret === 'function') {
         await ret(ctx, next);
       } else {
-        ctx.body = apiItem.select ? apiItem.select(ret) : ret;
+        ctx.body = apiItem.select(ret);
       }
     }
   };
