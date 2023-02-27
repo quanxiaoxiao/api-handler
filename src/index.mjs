@@ -32,8 +32,10 @@ export const parse = (apis) => {
       typeInput: null,
       query: null,
       data: null,
-      select: (d) => d,
       fn: null,
+      onPost: () => {},
+      onPre: () => {},
+      select: (d) => d,
       regexp: pathToRegexp(pathname),
     };
     if (type === 'function') {
@@ -60,6 +62,12 @@ export const parse = (apis) => {
             throw createError(500, errorMessage);
           };
         }
+      }
+      if (typeof obj.onPre === 'function') {
+        defaultOptions.onPre = obj.onPre;
+      }
+      if (typeof obj.onPost === 'function') {
+        defaultOptions.onPost = obj.onPost;
       }
       for (let j = 0; j < methodList.length; j++) {
         const method = methodList[j].toUpperCase();
@@ -113,6 +121,12 @@ export const parse = (apis) => {
           if (fn.data) {
             options.data = fn.data;
           }
+          if (typeof fn.onPre === 'function') {
+            options.onPre = fn.onPre;
+          }
+          if (typeof fn.onPost === 'function') {
+            options.onPost = fn.onPost;
+          }
         } else {
           options.fn = fn;
         }
@@ -121,6 +135,57 @@ export const parse = (apis) => {
     }
   }
   return result;
+};
+
+const responseToOption = async (ctx, next, apiMatchList) => {
+  ctx.status = 204;
+  const optionItem = apiMatchList.find((d) => d.method === 'OPTIONS');
+  if (optionItem) {
+    ctx.matches = optionItem.regexp.exec(ctx.path);
+    await optionItem.fn(ctx, next);
+  } else {
+    ctx.set(
+      'allow',
+      ['OPTIONS', ...apiMatchList.map((item) => item.method)].join(', '),
+    );
+    ctx.body = null;
+  }
+};
+
+const setContentQuery = (ctx, apiItem) => {
+  ctx.contentQuery = getContentQuery(
+    _.get(apiItem, 'type.schema.properties'),
+    apiItem.query,
+    ctx.query,
+  );
+  if (apiItem.type && !apiItem.type(ctx.contentQuery)) {
+    ctx.throw(400, JSON.stringify(apiItem.type.errors));
+  }
+};
+
+const setContentData = async (ctx, apiItem) => {
+  if (apiItem.typeInput) {
+    if (typeof ctx.contentData === 'undefined' && ctx.req.readable) {
+      try {
+        const buf = await receiveData(ctx.req);
+        const contentData = JSON.parse(buf);
+        ctx.contentData = apiItem.data
+          ? merge(apiItem.data, contentData)
+          : contentData;
+      } catch (error) {
+        console.warn(`${ctx.path} [${ctx.method}], ${error.message}`);
+        ctx.throw(500);
+      }
+    }
+  } else if (typeof ctx.contentData !== 'undefined') {
+    delete ctx.contentData;
+  }
+  if (apiItem.typeInput
+    && typeof ctx.contentData !== 'undefined'
+    && !apiItem.typeInput(ctx.contentData)
+  ) {
+    ctx.throw(400, JSON.stringify(apiItem.typeInput.errors));
+  }
 };
 
 const handler = (apis) => {
@@ -132,58 +197,26 @@ const handler = (apis) => {
     if (apiMatchList.length === 0) {
       await next();
     } else if (method === 'OPTIONS') {
-      ctx.status = 204;
-      const optionItem = apiMatchList.find((d) => d.method === 'OPTIONS');
-      if (optionItem) {
-        ctx.matches = optionItem.regexp.exec(path);
-        await optionItem.fn(ctx, next);
-      } else {
-        ctx.set(
-          'allow',
-          ['OPTIONS', ...apiMatchList.map((item) => item.method)].join(', '),
-        );
-        ctx.body = null;
-      }
+      responseToOption(ctx, next, apiMatchList);
     } else {
       const apiItem = apiMatchList.find((d) => method === d.method);
       if (!apiItem) {
         ctx.throw(405);
       }
-      ctx.contentQuery = getContentQuery(
-        _.get(apiItem, 'type.schema.properties'),
-        apiItem.query,
-        ctx.query,
-      );
-      if (apiItem.type && !apiItem.type(ctx.contentQuery)) {
-        ctx.throw(400, JSON.stringify(apiItem.type.errors));
-      }
       ctx.matches = apiItem.regexp.exec(path);
-      if (apiItem.typeInput) {
-        if (typeof ctx.contentData === 'undefined' && ctx.req.readable) {
-          try {
-            const buf = await receiveData(ctx.req);
-            const contentData = JSON.parse(buf);
-            ctx.contentData = apiItem.data
-              ? merge(apiItem.data, contentData)
-              : contentData;
-          } catch (error) {
-            ctx.throw(400, error.message);
-          }
-        }
-      } else if (typeof ctx.contentData !== 'undefined') {
-        delete ctx.contentData;
-      }
-      if (apiItem.typeInput
-        && typeof ctx.contentData !== 'undefined'
-        && !apiItem.typeInput(ctx.contentData)
-      ) {
-        ctx.throw(400, JSON.stringify(apiItem.typeInput.errors));
+      setContentQuery(ctx, apiItem);
+      await setContentData(ctx, apiItem);
+      if (apiItem.onPre) {
+        await apiItem.onPre(ctx);
       }
       const ret = await apiItem.fn(ctx, next);
       if (typeof ret === 'function') {
         await ret(ctx, next);
       } else {
         ctx.body = apiItem.select(ret);
+        if (apiItem.onPost) {
+          await apiItem.onPost(ctx);
+        }
       }
     }
   };

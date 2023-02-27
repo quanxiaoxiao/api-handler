@@ -300,3 +300,138 @@ test('select', async (t) => {
     age: 33,
   });
 });
+
+test('run onPre', async (t) => {
+  t.plan(2);
+  const handler = api({
+    '/test/cqq': {
+      onPre: (ctx) => {
+        ctx.cqq = 'quan';
+        t.pass();
+      },
+      get: {
+        fn: (ctx) => ({
+          name: ctx.cqq,
+        }),
+      },
+    },
+  });
+  const ctx = {
+    method: 'GET',
+    path: '/test/cqq',
+    set: (name, value) => {
+      ctx[name] = value;
+    },
+    get: (name) => ctx[name],
+    throw: () => {
+    },
+  };
+  await handler(ctx, () => {});
+  t.deepEqual(ctx.body, {
+    name: 'quan',
+  });
+});
+
+test('run onPre2', async (t) => {
+  t.plan(2);
+  const handler = api({
+    '/test/cqq': {
+      onPre: (ctx) => {
+        ctx.cqq = 'quan';
+        t.pass();
+      },
+      get: {
+        onPre: (ctx) => {
+          ctx.cqq = 'foo';
+          t.pass();
+        },
+        fn: (ctx) => ({
+          name: ctx.cqq,
+        }),
+      },
+    },
+  });
+  const ctx = {
+    method: 'GET',
+    path: '/test/cqq',
+    set: (name, value) => {
+      ctx[name] = value;
+    },
+    get: (name) => ctx[name],
+    throw: () => {
+    },
+  };
+  await handler(ctx, () => {});
+  t.deepEqual(ctx.body, {
+    name: 'foo',
+  });
+});
+
+test('run onPost', async (t) => {
+  t.plan(3);
+  const handler = api({
+    '/test/cqq': {
+      onPre: () => {
+        t.pass();
+      },
+      onPost: (ctx) => {
+        t.deepEqual(ctx.body, { name: 'cqq' });
+      },
+      get: {
+        fn: () => ({
+          name: 'cqq',
+        }),
+      },
+    },
+  });
+  const ctx = {
+    method: 'GET',
+    path: '/test/cqq',
+    set: (name, value) => {
+      ctx[name] = value;
+    },
+    get: (name) => ctx[name],
+    throw: () => {
+    },
+  };
+  await handler(ctx, () => {});
+  t.deepEqual(ctx.body, {
+    name: 'cqq',
+  });
+});
+
+test('run onPost2', async (t) => {
+  t.plan(3);
+  const handler = api({
+    '/test/cqq': {
+      onPre: () => {
+        t.pass();
+      },
+      onPost: () => {
+        t.pass();
+      },
+      get: {
+        fn: () => ({
+          name: 'cqq',
+        }),
+        onPost: (ctx) => {
+          t.deepEqual(ctx.body, { name: 'cqq' });
+        },
+      },
+    },
+  });
+  const ctx = {
+    method: 'GET',
+    path: '/test/cqq',
+    set: (name, value) => {
+      ctx[name] = value;
+    },
+    get: (name) => ctx[name],
+    throw: () => {
+    },
+  };
+  await handler(ctx, () => {});
+  t.deepEqual(ctx.body, {
+    name: 'cqq',
+  });
+});
