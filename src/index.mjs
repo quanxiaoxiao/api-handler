@@ -148,6 +148,10 @@ const responseToOption = async (ctx, next, apiMatchList) => {
       'allow',
       ['OPTIONS', ...apiMatchList.map((item) => item.method)].join(', '),
     );
+    ctx.set(
+      'x-match',
+      _.get(_.first(apiMatchList[0]), 'pathname', ''),
+    );
     ctx.body = null;
   }
 };
