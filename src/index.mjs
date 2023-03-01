@@ -149,8 +149,8 @@ const responseToOption = async (ctx, next, apiMatchList) => {
       ['OPTIONS', ...apiMatchList.map((item) => item.method)].join(', '),
     );
     ctx.set(
-      'x-match',
-      _.get(_.first(apiMatchList[0]), 'pathname', ''),
+      'x-match-path',
+      _.get(_.first(apiMatchList), 'pathname', ''),
     );
     ctx.body = null;
   }
