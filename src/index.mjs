@@ -178,7 +178,7 @@ const setContentData = async (ctx, apiItem) => {
           : contentData;
       } catch (error) {
         console.warn(`${ctx.path} [${ctx.method}], ${error.message}`);
-        ctx.throw(500);
+        ctx.throw(400);
       }
     }
   } else if (typeof ctx.contentData !== 'undefined') {
