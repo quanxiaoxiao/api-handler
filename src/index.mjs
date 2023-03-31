@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import _ from 'lodash';
 import Ajv from 'ajv';
 import createError from 'http-errors';
@@ -156,6 +157,31 @@ const responseToOption = async (ctx, next, apiMatchList) => {
   }
 };
 
+const responseToGet = async (ctx, content) => {
+  if (content === '' || content == null) {
+    ctx.status = 204;
+    ctx.body = null;
+  } else {
+    const contentType = typeof content;
+    if (contentType === 'object' && content.pipe) {
+      ctx.body = content;
+    } else {
+      const output = Buffer.isBuffer(content) || contentType === 'string' ? content : JSON.stringify(content);
+      const hash = crypto.createHash('sha256').update(output).digest('hex');
+      if (ctx.get('if-none-match') !== hash) {
+        ctx.set('etag', hash);
+        if (contentType === 'object' && !Buffer.isBuffer(content)) {
+          ctx.set('content-type', 'application/json');
+        }
+        ctx.body = content;
+      } else {
+        ctx.status = 304;
+        ctx.body = null;
+      }
+    }
+  }
+};
+
 const setContentQuery = (ctx, apiItem) => {
   ctx.contentQuery = getContentQuery(
     _.get(apiItem, 'type.schema.properties'),
@@ -217,7 +243,12 @@ const handler = (apis) => {
       if (typeof ret === 'function') {
         await ret(ctx, next);
       } else {
-        ctx.body = apiItem.select(ret);
+        const content = apiItem.select(ret);
+        if (method === 'GET') {
+          responseToGet(ctx, content);
+        } else {
+          ctx.body = content;
+        }
         if (apiItem.onPost) {
           await apiItem.onPost(ctx);
         }
