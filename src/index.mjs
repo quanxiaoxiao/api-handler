@@ -159,7 +159,6 @@ const responseToOption = async (ctx, next, apiMatchList) => {
 
 const responseToGet = async (ctx, content) => {
   if (content === '' || content == null) {
-    ctx.status = 204;
     ctx.body = null;
   } else {
     const contentType = typeof content;
