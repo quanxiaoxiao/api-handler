@@ -1,6 +1,6 @@
 {
   "name": "@quanxiaoxiao/api-handler",
-  "version": "0.2.7",
+  "version": "0.2.8",
   "description": "",
   "keywords": [],
   "author": "",
@@ -15,7 +15,7 @@
     "registry": "https://registry.npmjs.org"
   },
   "dependencies": {
-    "@quanxiaoxiao/about-http": "^0.1.5",
+    "@quanxiaoxiao/about-http": "^0.2.3",
     "@quanxiaoxiao/data-convert": "^0.6.1",
     "ajv": "^8.12.0",
     "http-errors": "^2.0.0",

@@ -58,9 +58,9 @@ export const parse = (apis) => {
         try {
           defaultOptions.select = select(obj.select);
         } catch (error) {
-          const errorMessage = error.message;
           defaultOptions.select = () => {
-            throw createError(500, errorMessage);
+            console.error(error);
+            throw createError(500, 'server interal error');
           };
         }
       }
@@ -87,10 +87,9 @@ export const parse = (apis) => {
               options.type = new Ajv({ strict: false }).compile(fn.type);
             }
           } catch (error) {
-            const errorMessage = error.message;
-            console.warn(`\`${pathname}\` \`${methodList[j]}\` parse type fail, ${errorMessage}`);
             options.type = () => {
-              throw createError(500, errorMessage);
+              console.error(error);
+              throw createError(500, 'server interal error');
             };
           }
           try {
@@ -98,10 +97,9 @@ export const parse = (apis) => {
               options.typeInput = new Ajv({ strict: false }).compile(fn.typeInput);
             }
           } catch (error) {
-            const errorMessage = error.message;
-            console.warn(`\`${pathname}\` \`${methodList[j]}\` parse typeInput fail, ${error.message}`);
             options.typeInput = () => {
-              throw createError(500, errorMessage);
+              console.error(error);
+              throw createError(500, 'server interal error');
             };
           }
           try {
@@ -109,10 +107,9 @@ export const parse = (apis) => {
               options.select = select(fn.select);
             }
           } catch (error) {
-            const errorMessage = error.message;
-            console.warn(`\`${pathname}\` \`${methodList[j]}\` parse select fail, ${error.message}`);
             options.select = () => {
-              throw createError(500, errorMessage);
+              console.error(error);
+              throw createError(500, 'server interal error');
             };
           }
           options.fn = fn.fn;
@@ -159,6 +156,7 @@ const responseToOption = async (ctx, next, apiMatchList) => {
 
 const responseToGet = async (ctx, content) => {
   if (content === '' || content == null) {
+    ctx.status = 204;
     ctx.body = null;
   } else {
     const contentType = typeof content;
